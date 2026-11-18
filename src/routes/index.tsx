@@ -15,6 +15,7 @@ type Point = { x: number; y: number };
 type Building = { x: number; y: number; w: number; h: number; color: string; floors: number; shop?: string };
 type Car = { x: number; y: number; dir: 1 | -1; speed: number; color: string; type: "sedan" | "van" | "taxi"; road: number };
 type Pedestrian = { x: number; y: number; phase: number; speed: number; skin: string; shirt: string; pants: string; hair: string };
+type Zombie = { x: number; y: number; hp: number; speed: number; attackCooldown: number; phase: number };
 
 const WORLD = { width: 2200, height: 1650 };
 const ROAD_Y = [310, 750, 1190];
@@ -81,6 +82,12 @@ const initialNpcs: Pedestrian[] = pedestrianSpots.map(([x, y], i) => ({
   hair: pedestrianPalette.hair[i % pedestrianPalette.hair.length],
 }));
 
+const initialZombies: Zombie[] = Array.from({ length: 12 }, (_, i) => ({
+  x: [80, 2100, 1200, 1950, 300, 1750, 900, 1450, 500, 2050, 1050, 1600][i],
+  y: [80, 1450, 80, 800, 1550, 120, 1300, 400, 850, 500, 1550, 1000][i],
+  hp: 100, speed: 0.72 + (i % 4) * 0.09, attackCooldown: 0, phase: i * 1.3,
+}));
+
 const initialCars: Car[] = [
   { x: 100, y: 290, dir: 1, speed: 1.55, color: "#d7d9dc", type: "sedan", road: 0 },
   { x: 900, y: 332, dir: -1, speed: 1.35, color: "#d9a52e", type: "taxi", road: 0 },
@@ -106,6 +113,12 @@ function FavelaAngolana() {
   const camera = useRef<Point>({ x: 0, y: 0 });
   const cars = useRef<Car[]>(initialCars.map((c) => ({ ...c })));
   const npcs = useRef<Point[]>(initialNpcs.map((p) => ({ ...p })));
+  const zombies = useRef<Zombie[]>(initialZombies.map((z) => ({ ...z })));
+  const combatCooldown = useRef(0);
+  const [health, setHealth] = useState(100);
+  const [zombieCount, setZombieCount] = useState(initialZombies.length);
+  const [hidden, setHidden] = useState(false);
+  const [combatMessage, setCombatMessage] = useState("Os infectados estão espalhados pelo bairro. Fica atento!");
   const [position, setPosition] = useState("Bairro da Paz");
   const [missionDone, setMissionDone] = useState(false);
   const [message, setMessage] = useState("A cidade está viva. Explora com cuidado!");
@@ -122,6 +135,7 @@ function FavelaAngolana() {
         setMessage("Boa! A encomenda chegou ao Mercado do Bairro.");
       }
       if (key === "escape") setPaused((v) => !v);
+      if (key === "h") setHidden((v) => !v);
     };
     const up = (event: KeyboardEvent) => { keys.current[event.key.toLowerCase()] = false; };
     window.addEventListener("keydown", down);
@@ -276,6 +290,44 @@ function FavelaAngolana() {
           player.current.x = Math.max(18, Math.min(WORLD.width - 18, nextX));
           player.current.y = Math.max(18, Math.min(WORLD.height - 18, nextY));
         }
+        // Combate corpo a corpo: F atinge o infectado mais próximo.
+        if (combatCooldown.current > 0) combatCooldown.current--;
+        if (keys.current["f"] && combatCooldown.current === 0) {
+          const target = zombies.current.find((z) => Math.hypot(z.x - player.current.x, z.y - player.current.y) < 62);
+          if (target) {
+            target.hp -= 50;
+            combatCooldown.current = 24;
+            setCombatMessage(target.hp <= 0 ? "Derrubaste um infectado! Continua em movimento." : "Acertaste no infectado! Mais um golpe para o derrubar.");
+            if (target.hp <= 0) {
+              zombies.current = zombies.current.filter((z) => z !== target);
+              setZombieCount(zombies.current.length);
+            }
+          } else {
+            combatCooldown.current = 12;
+            setCombatMessage("Não há infectados suficientemente perto para atacar.");
+          }
+        }
+        // Os infectados perseguem o jogador e tentam contornar casas e muros.
+        zombies.current.forEach((z) => {
+          if (z.attackCooldown > 0) z.attackCooldown--;
+          const distance = Math.hypot(player.current.x - z.x, player.current.y - z.y);
+          if (hidden && distance > 95) return;
+          if (distance > 25) {
+            const angle = Math.atan2(player.current.y - z.y, player.current.x - z.x);
+            const step = z.speed * (distance < 220 ? 1.18 : 1);
+            const candidates = [
+              { x: z.x + Math.cos(angle) * step, y: z.y + Math.sin(angle) * step },
+              { x: z.x + Math.cos(angle + 0.8) * step, y: z.y + Math.sin(angle + 0.8) * step },
+              { x: z.x + Math.cos(angle - 0.8) * step, y: z.y + Math.sin(angle - 0.8) * step },
+            ];
+            const next = candidates.find((p) => !safeBuildings.some((b) => circleRect(p.x, p.y, 11, b)));
+            if (next) { z.x = next.x; z.y = next.y; }
+          } else if (z.attackCooldown === 0) {
+            setHealth((v) => Math.max(0, v - 8));
+            z.attackCooldown = 48;
+            setCombatMessage("Um infectado atacou-te! Afasta-te ou luta.");
+          }
+        });
         // Trânsito abranda e pára antes de atingir o jogador ou outro veículo.
         cars.current.forEach((car, index) => {
           let blocked = Math.abs(player.current.y - car.y) < 30 &&
@@ -330,6 +382,16 @@ function FavelaAngolana() {
         drawPerson(npc.x + wanderX, npc.y + wanderY, ox, oy, npc, walk);
       });
 
+      // Infectados: olhos vermelhos, roupa rasgada e movimento agressivo.
+      zombies.current.forEach((z) => {
+        const zombieLook: Pedestrian = { x: z.x, y: z.y, phase: z.phase, speed: 1.5, skin: "#87917a", shirt: "#51443d", pants: "#292b2a", hair: "#171513" };
+        drawPerson(z.x, z.y, ox, oy, zombieLook, frame * 0.28 + z.phase);
+        const zx = z.x - ox, zy = z.y - oy;
+        ctx.fillStyle = "#ff302d"; ctx.beginPath(); ctx.arc(zx - 2.5, zy - 17, 1.5, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(zx + 2.5, zy - 17, 1.5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#d64a3e"; ctx.fillRect(zx - 5, zy - 5, 10, 2);
+      });
+
       // Personagem principal com corpo, mãos, pernas, pés e rosto desenhados em detalhe.
       const playerLook: Pedestrian = { x: player.current.x, y: player.current.y, phase: 0, speed: 1, skin: "#8a5338", shirt: "#245b9b", pants: "#20252c", hair: "#171513" };
       const moving = Object.values(keys.current).some(Boolean);
@@ -344,6 +406,7 @@ function FavelaAngolana() {
       ROAD_X.forEach((x) => ctx.fillRect(bx + 5 + (x / WORLD.width) * (mw - 10), by + 5, 5, mh - 10));
       ctx.fillStyle = "#ffdc62"; ctx.beginPath();
       ctx.arc(bx + 5 + (player.current.x / WORLD.width) * (mw - 10), by + 5 + (player.current.y / WORLD.height) * (mh - 10), 4, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#e64b43"; zombies.current.forEach((z) => { ctx.beginPath(); ctx.arc(bx + 5 + (z.x / WORLD.width) * (mw - 10), by + 5 + (z.y / WORLD.height) * (mh - 10), 2.2, 0, Math.PI * 2); ctx.fill(); });
       if (paused) {
         ctx.fillStyle = "rgba(0,0,0,.65)"; ctx.fillRect(0, 0, w, h);
         ctx.fillStyle = "#fff"; ctx.font = "bold 34px Arial"; ctx.textAlign = "center"; ctx.fillText("JOGO EM PAUSA", w / 2, h / 2); ctx.textAlign = "left";
@@ -367,7 +430,7 @@ function FavelaAngolana() {
           <div>
             <div style={{ color: "#e7b84b", fontSize: 11, letterSpacing: 3, fontWeight: 900 }}>ANGOLA • CIDADE ABERTA</div>
             <h1 style={{ margin: "4px 0", fontSize: "clamp(27px,4vw,42px)", letterSpacing: -1.5 }}>FAVELA <span style={{ color: "#e7b84b" }}>ANGOLANA</span></h1>
-            <div style={{ color: "#aab5bf", fontSize: 13 }}>Capítulo 01 · Bairro da Paz · Protótipo 0.2</div>
+            <div style={{ color: "#aab5bf", fontSize: 13 }}>Capítulo 01 · Sobrevivência no Bairro da Paz · Protótipo 0.3</div>
           </div>
           <div style={{ display: "flex", gap: 9, alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ border: "1px solid #3c4b57", background: "#1b2730", borderRadius: 30, padding: "9px 13px", fontSize: 11, color: "#9bd5ae" }}>● EXPLORAÇÃO LIVRE</span>
@@ -381,16 +444,22 @@ function FavelaAngolana() {
               <canvas ref={canvasRef} width={1100} height={660} style={{ width: "100%", display: "block", aspectRatio: "5 / 3" }} />
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", color: "#9ba8b3", fontSize: 12, padding: "11px 4px" }}>
-              <span>WASD / SETAS: mover · SHIFT: correr · E: interagir</span><span>ESC: pausa</span>
+              <span>WASD: mover · SHIFT: correr · F: atacar · H: esconder · E: missão</span><span>ESC: pausa</span>
             </div>
           </div>
           <aside style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={panelStyle}>
               <div style={eyebrowStyle}>ESTADO DO JOGADOR</div>
-              <div style={{ fontSize: 20, fontWeight: 850, marginTop: 9 }}>Habitante</div>
+              <div style={{ fontSize: 20, fontWeight: 850, marginTop: 9 }}>Sobrevivente</div>
               <div style={{ color: "#aab5bf", fontSize: 12, marginTop: 4 }}>📍 {position}</div>
-              <div style={{ height: 7, background: "#303b45", borderRadius: 9, marginTop: 17 }}><div style={{ width: "100%", height: "100%", background: "#4da77a", borderRadius: 9 }} /></div>
-              <div style={{ fontSize: 10, color: "#9ba6b2", marginTop: 7 }}>VIDA 100 / 100</div>
+              <div style={{ height: 7, background: "#303b45", borderRadius: 9, marginTop: 17 }}><div style={{ width: `${health}%`, height: "100%", background: health < 35 ? "#df5148" : "#4da77a", borderRadius: 9 }} /></div>
+              <div style={{ fontSize: 10, color: "#9ba6b2", marginTop: 7 }}>VIDA {health} / 100</div>
+              <div style={{ color: hidden ? "#8bd5a8" : "#aab5bf", fontSize: 11, marginTop: 8 }}>{hidden ? "ESCONDIDO" : "À VISTA DOS INFECTADOS"}</div>
+            </div>
+            <div style={panelStyle}>
+              <div style={eyebrowStyle}>AMEAÇA INFECTADA</div>
+              <div style={{ fontSize: 24, fontWeight: 850, marginTop: 8, color: "#e56b5f" }}>{zombieCount} <span style={{ fontSize: 12, color: "#aab5bf", fontWeight: 500 }}>zumbis no bairro</span></div>
+              <p style={{ color: "#aab5bf", fontSize: 12, lineHeight: 1.5, margin: "7px 0 0" }}>{combatMessage}</p>
             </div>
             <div style={panelStyle}>
               <div style={eyebrowStyle}>TRÂNSITO DA CIDADE</div>
@@ -409,7 +478,7 @@ function FavelaAngolana() {
             </div>
             <div style={{ ...panelStyle, background: "#202b34" }}>
               <div style={eyebrowStyle}>A CIDADE ESTÁ A CRESCER</div>
-              <div style={{ fontSize: 11, color: "#aab5bf", lineHeight: 1.9, marginTop: 9 }}>✓ Mais edifícios e lojas<br />✓ Avenidas e passadeiras<br />✓ Carros com travagem<br />✓ Colisão com veículos e casas<br />◦ Multiplayer online: próxima fase</div>
+              <div style={{ fontSize: 11, color: "#aab5bf", lineHeight: 1.9, marginTop: 9 }}>✓ Mais edifícios e lojas<br />✓ Avenidas e passadeiras<br />✓ Carros com travagem<br />✓ Colisão com veículos e casas<br />✓ Zumbis perseguem e atacam<br />✓ Combate corpo a corpo<br />✓ Esconderijo temporário<br />◦ Multiplayer online: próxima fase</div>
             </div>
           </aside>
         </section>
