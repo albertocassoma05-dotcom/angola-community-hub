@@ -23,7 +23,8 @@ const buildings: Building[] = [];
 for (let row = 0; row < 4; row++) {
   for (let col = 0; col < 5; col++) {
     const x = 55 + col * 440 + ((row + col) % 2) * 18;
-    const y = 55 + row * 350 + (col % 2) * 12;
+    const rowStarts = [55, 405, 845, 1285];
+    const y = rowStarts[row] + (col % 2) * 12;
     if (x + 280 < WORLD.width && y + 220 < WORLD.height) {
       buildings.push({
         x, y, w: 170 + ((row * 31 + col * 17) % 105),
@@ -68,7 +69,7 @@ function circleRect(px: number, py: number, radius: number, r: { x: number; y: n
 function FavelaAngolana() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const keys = useRef<Record<string, boolean>>({});
-  const player = useRef<Point>({ x: 640, y: 500 });
+  const player = useRef<Point>({ x: 700, y: 620 });
   const camera = useRef<Point>({ x: 0, y: 0 });
   const cars = useRef<Car[]>(initialCars.map((c) => ({ ...c })));
   const npcs = useRef<Point[]>(initialNpcs.map((p) => ({ ...p })));
@@ -83,7 +84,7 @@ function FavelaAngolana() {
       const key = event.key.toLowerCase();
       if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(key)) event.preventDefault();
       keys.current[key] = true;
-      if (key === "e" && Math.hypot(player.current.x - 1090, player.current.y - 410) < 95) {
+      if (key === "e" && Math.hypot(player.current.x - 1090, player.current.y - 540) < 95) {
         setMissionDone(true);
         setMessage("Boa! A encomenda chegou ao Mercado do Bairro.");
       }
@@ -232,12 +233,12 @@ function FavelaAngolana() {
       safeBuildings.forEach((b) => drawBuilding(b, ox, oy));
 
       // Mercado de referência da missão.
-      const mx = 1010 - ox, my = 400 - oy;
+      const mx = 1010 - ox, my = 485 - oy;
       ctx.fillStyle = "#f0c04d"; ctx.fillRect(mx, my, 170, 56);
       ctx.fillStyle = "#2d2922"; ctx.font = "bold 15px Arial"; ctx.textAlign = "center";
       ctx.fillText("MERCADO DO BAIRRO", mx + 85, my + 34); ctx.textAlign = "left";
       ctx.fillStyle = missionDone ? "#44b77b" : "#f4d04e";
-      ctx.beginPath(); ctx.arc(1090 - ox, 475 - oy, 15 + Math.sin(frame / 12) * 3, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(1090 - ox, 560 - oy, 15 + Math.sin(frame / 12) * 3, 0, Math.PI * 2); ctx.fill();
 
       // Trânsito em faixas próprias; carros desenhados sobre o asfalto.
       cars.current.forEach((car) => drawCar(car, ox, oy));
