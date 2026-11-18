@@ -84,7 +84,7 @@ function FavelaAngolana() {
       const key = event.key.toLowerCase();
       if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(key)) event.preventDefault();
       keys.current[key] = true;
-      if (key === "e" && Math.hypot(player.current.x - 1090, player.current.y - 540) < 95) {
+      if (key === "e" && Math.hypot(player.current.x - 1090, player.current.y - 700) < 95) {
         setMissionDone(true);
         setMessage("Boa! A encomenda chegou ao Mercado do Bairro.");
       }
@@ -233,12 +233,12 @@ function FavelaAngolana() {
       safeBuildings.forEach((b) => drawBuilding(b, ox, oy));
 
       // Mercado de referência da missão.
-      const mx = 1010 - ox, my = 485 - oy;
+      const mx = 1010 - ox, my = 630 - oy;
       ctx.fillStyle = "#f0c04d"; ctx.fillRect(mx, my, 170, 56);
       ctx.fillStyle = "#2d2922"; ctx.font = "bold 15px Arial"; ctx.textAlign = "center";
       ctx.fillText("MERCADO DO BAIRRO", mx + 85, my + 34); ctx.textAlign = "left";
       ctx.fillStyle = missionDone ? "#44b77b" : "#f4d04e";
-      ctx.beginPath(); ctx.arc(1090 - ox, 560 - oy, 15 + Math.sin(frame / 12) * 3, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(1090 - ox, 700 - oy, 15 + Math.sin(frame / 12) * 3, 0, Math.PI * 2); ctx.fill();
 
       // Trânsito em faixas próprias; carros desenhados sobre o asfalto.
       cars.current.forEach((car) => drawCar(car, ox, oy));
