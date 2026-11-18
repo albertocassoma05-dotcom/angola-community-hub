@@ -14,6 +14,7 @@ export const Route = createFileRoute("/")({
 type Point = { x: number; y: number };
 type Building = { x: number; y: number; w: number; h: number; color: string; floors: number; shop?: string };
 type Car = { x: number; y: number; dir: 1 | -1; speed: number; color: string; type: "sedan" | "van" | "taxi"; road: number };
+type Pedestrian = { x: number; y: number; phase: number; speed: number; skin: string; shirt: string; pants: string; hair: string };
 
 const WORLD = { width: 2200, height: 1650 };
 const ROAD_Y = [310, 750, 1190];
@@ -36,17 +37,49 @@ for (let row = 0; row < 4; row++) {
     }
   }
 }
+// Casas adicionais em cada quarteirão para dar mais densidade ao bairro.
+const blockXs = [[28, 155], [185, 315], [455, 585], [610, 755], [895, 1025], [1050, 1200], [1335, 1470], [1500, 1640], [1775, 1910], [1940, 2150]];
+const blockYs = [[28, 135], [150, 270], [365, 500], [520, 710], [805, 940], [960, 1150], [1245, 1400], [1420, 1610]];
+for (let i = 0; i < 42; i++) {
+  const col = i % blockXs.length;
+  const row = Math.floor(i / blockXs.length) % blockYs.length;
+  const [minX, maxX] = blockXs[col];
+  const [minY, maxY] = blockYs[row];
+  const x = minX + ((i * 37) % Math.max(1, maxX - minX - 105));
+  const y = minY + ((i * 29) % Math.max(1, maxY - minY - 82));
+  buildings.push({
+    x, y, w: 82 + (i * 13) % 58, h: 66 + (i * 17) % 56,
+    color: palette[(i + 2) % palette.length], floors: 1 + (i % 2),
+    shop: i % 13 === 0 ? "CANTINA" : undefined,
+  });
+}
 // Deixa corredores largos e seguros para a circulação, sem edifícios sobre as estradas.
 const safeBuildings = buildings.filter((b) =>
   !ROAD_Y.some((y) => b.y < y + 105 && b.y + b.h > y - 35) &&
   !ROAD_X.some((x) => b.x < x + 105 && b.x + b.w > x - 35)
 );
 
-const initialNpcs: Point[] = [
-  { x: 260, y: 440 }, { x: 600, y: 590 }, { x: 1040, y: 470 },
-  { x: 1460, y: 880 }, { x: 1900, y: 520 }, { x: 620, y: 1320 },
-  { x: 1510, y: 1320 }, { x: 2050, y: 930 },
+const pedestrianPalette = {
+  skin: ["#6b402d", "#8a5338", "#a66a49", "#573625", "#bb805b"],
+  shirt: ["#d6a23b", "#386b82", "#a64f42", "#477653", "#e0d5bd", "#704f83", "#d5d8dc"],
+  pants: ["#252d36", "#34465a", "#594735", "#242424", "#6b6b64"],
+  hair: ["#171513", "#28201b", "#33251d"],
+};
+const pedestrianSpots = [
+  [260,440],[600,590],[1040,470],[1460,880],[1900,520],[620,1320],[1510,1320],[2050,930],
+  [120,160],[235,220],[520,150],[690,230],[960,140],[1120,230],[1400,170],[1570,230],
+  [1850,150],[2020,220],[130,560],[260,650],[520,540],[700,650],[960,560],[1130,650],
+  [1400,550],[1580,650],[1850,560],[2040,650],[120,950],[260,1060],[520,950],[700,1080],
+  [960,950],[1130,1070],[1400,950],[1580,1080],[1850,950],[2040,1070],[150,1430],[280,1510],
+  [550,1400],[710,1510],[990,1400],[1150,1510],[1430,1400],[1600,1510],[1880,1400],[2070,1510],
 ];
+const initialNpcs: Pedestrian[] = pedestrianSpots.map(([x, y], i) => ({
+  x, y, phase: i * 1.71, speed: 0.35 + (i % 4) * 0.09,
+  skin: pedestrianPalette.skin[i % pedestrianPalette.skin.length],
+  shirt: pedestrianPalette.shirt[i % pedestrianPalette.shirt.length],
+  pants: pedestrianPalette.pants[i % pedestrianPalette.pants.length],
+  hair: pedestrianPalette.hair[i % pedestrianPalette.hair.length],
+}));
 
 const initialCars: Car[] = [
   { x: 100, y: 290, dir: 1, speed: 1.55, color: "#d7d9dc", type: "sedan", road: 0 },
@@ -161,6 +194,53 @@ function FavelaAngolana() {
       ctx.fillStyle = "rgba(255,255,255,.12)"; ctx.fillRect(x + 4, y + 4, b.w - 8, 3);
     };
 
+    const drawPerson = (x: number, y: number, ox: number, oy: number, person: Pedestrian, walk: number, isPlayer = false) => {
+      const sx = x - ox, sy = y - oy;
+      if (sx < -35 || sx > canvas.width + 35 || sy < -45 || sy > canvas.height + 45) return;
+      const stride = Math.sin(walk) * 4.5;
+      const armSwing = Math.sin(walk + Math.PI) * 3.5;
+      ctx.save();
+      ctx.translate(sx, sy);
+      // Sombra e pernas articuladas, com calçado visível.
+      ctx.fillStyle = "rgba(0,0,0,.28)";
+      ctx.beginPath(); ctx.ellipse(0, 18, 13, 5, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.lineCap = "round";
+      ctx.strokeStyle = person.pants; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(-4, 7); ctx.lineTo(-5 + stride, 18); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(4, 7); ctx.lineTo(5 - stride, 18); ctx.stroke();
+      ctx.strokeStyle = "#17191c"; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(-5 + stride, 18); ctx.lineTo(-8 + stride, 20); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(5 - stride, 18); ctx.lineTo(8 - stride, 20); ctx.stroke();
+      // Tronco e roupa com volume e pequenos detalhes.
+      ctx.fillStyle = person.shirt;
+      ctx.beginPath(); ctx.roundRect(-8, -7, 16, 17, 4); ctx.fill();
+      ctx.fillStyle = "rgba(255,255,255,.18)"; ctx.fillRect(-5, -5, 3, 11);
+      ctx.fillStyle = "rgba(0,0,0,.18)"; ctx.fillRect(3, -4, 2, 12);
+      // Braços, cotovelos e mãos.
+      ctx.strokeStyle = person.skin; ctx.lineWidth = 4.2;
+      ctx.beginPath(); ctx.moveTo(-7, -3); ctx.lineTo(-11 - armSwing, 4); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(7, -3); ctx.lineTo(11 + armSwing, 4); ctx.stroke();
+      ctx.fillStyle = person.skin;
+      ctx.beginPath(); ctx.arc(-11 - armSwing, 5, 2.6, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(11 + armSwing, 5, 2.6, 0, Math.PI * 2); ctx.fill();
+      // Pescoço, cabeça, cabelo, orelhas e traços do rosto.
+      ctx.fillStyle = person.skin; ctx.fillRect(-2.5, -12, 5, 6);
+      ctx.beginPath(); ctx.ellipse(0, -17, 7.2, 8.2, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = person.hair;
+      ctx.beginPath(); ctx.arc(0, -20, 7.2, Math.PI, Math.PI * 2); ctx.fill();
+      ctx.fillRect(-7, -21, 3, 5); ctx.fillRect(4, -21, 3, 5);
+      ctx.fillStyle = "#211b18";
+      ctx.beginPath(); ctx.arc(-2.5, -17, 0.8, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(2.5, -17, 0.8, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "#513326"; ctx.lineWidth = 0.9;
+      ctx.beginPath(); ctx.moveTo(-1.5, -13.5); ctx.quadraticCurveTo(0, -12.5, 1.5, -13.5); ctx.stroke();
+      if (isPlayer) {
+        ctx.fillStyle = "#fff"; ctx.font = "bold 11px Arial"; ctx.textAlign = "center";
+        ctx.fillText("TU", 0, -31);
+      }
+      ctx.restore();
+    };
+
     const drawCar = (car: Car, ox: number, oy: number) => {
       const x = car.x - ox, y = car.y - oy;
       if (x < -100 || x > canvas.width + 100 || y < -50 || y > canvas.height + 50) return;
@@ -242,20 +322,18 @@ function FavelaAngolana() {
 
       // Trânsito em faixas próprias; carros desenhados sobre o asfalto.
       cars.current.forEach((car) => drawCar(car, ox, oy));
+      // Pedestres percorrem os passeios e os espaços do bairro, com animação de braços e pernas.
       npcs.current.forEach((npc, i) => {
-        const wander = Math.sin(frame / 65 + i) * 6;
-        ctx.fillStyle = "#25272a"; ctx.beginPath(); ctx.arc(npc.x - ox + wander, npc.y - oy, 9, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = ["#e6b24c", "#4f8d78", "#bd6654", "#4d78a8"][i % 4];
-        ctx.fillRect(npc.x - ox - 8 + wander, npc.y - oy + 8, 16, 21);
+        const walk = frame * npc.speed * 0.08 + npc.phase;
+        const wanderX = Math.sin(frame / 95 + npc.phase) * 12;
+        const wanderY = Math.cos(frame / 120 + npc.phase) * 7;
+        drawPerson(npc.x + wanderX, npc.y + wanderY, ox, oy, npc, walk);
       });
 
-      // Personagem principal com sombra e nome.
-      const px = player.current.x - ox, py = player.current.y - oy;
-      ctx.fillStyle = "rgba(0,0,0,.3)"; ctx.beginPath(); ctx.ellipse(px, py + 17, 14, 6, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = "#d7a36d"; ctx.beginPath(); ctx.arc(px, py - 7, 9, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = "#245b9b"; ctx.fillRect(px - 10, py + 2, 20, 22);
-      ctx.fillStyle = "#171b22"; ctx.fillRect(px - 9, py + 23, 7, 13); ctx.fillRect(px + 2, py + 23, 7, 13);
-      ctx.fillStyle = "#fff"; ctx.font = "bold 12px Arial"; ctx.textAlign = "center"; ctx.fillText("TU", px, py - 23); ctx.textAlign = "left";
+      // Personagem principal com corpo, mãos, pernas, pés e rosto desenhados em detalhe.
+      const playerLook: Pedestrian = { x: player.current.x, y: player.current.y, phase: 0, speed: 1, skin: "#8a5338", shirt: "#245b9b", pants: "#20252c", hair: "#171513" };
+      const moving = Object.values(keys.current).some(Boolean);
+      drawPerson(player.current.x, player.current.y, ox, oy, playerLook, moving ? frame * 0.22 : 0, true);
 
       // Minimap.
       const mw = 154, mh = 104, bx = w - mw - 15, by = 15;
