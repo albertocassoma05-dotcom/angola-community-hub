@@ -15,7 +15,7 @@ type Point = { x: number; y: number };
 type Building = { x: number; y: number; w: number; h: number; color: string; floors: number; shop?: string };
 type Car = { x: number; y: number; dir: 1 | -1; speed: number; color: string; type: "sedan" | "van" | "taxi"; road: number };
 
-const WORLD = { width: 2200, height: 1500 };
+const WORLD = { width: 2200, height: 1650 };
 const ROAD_Y = [310, 750, 1190];
 const ROAD_X = [390, 830, 1270, 1710];
 const palette = ["#bd8052", "#d0a16a", "#a95e46", "#d4bd91", "#b7a16e", "#9c6e55", "#d2a45c"];
